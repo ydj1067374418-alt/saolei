@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "#1a1a2e",
+    "navigationBarTitleText": "无限冒险·随机刷怪",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#16213e"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

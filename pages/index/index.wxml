@@ -1,0 +1,102 @@
+<!-- pages/index/index.wxml -->
+<view class="container">
+  <!-- 玩家状态卡片 -->
+  <view class="card player-card">
+    <view class="card-title">⚔️ 冒险者 ⚔️</view>
+    <view class="stats-grid">
+      <view class="stat-item">❤️ {{player.hp}}/{{player.maxHp}}</view>
+      <view class="stat-item">📊 Lv.{{player.level}}</view>
+      <view class="stat-item">⚡ {{player.attack}}</view>
+      <view class="stat-item">🛡️ {{player.defense}}</view>
+      <view class="stat-item">✨ {{player.exp}}/{{player.nextExp}}</view>
+      <view class="stat-item">💧 {{player.mp}}/{{player.maxMp}}</view>
+    </view>
+    <view class="progress-bar">
+      <view class="progress-fill hp-fill" style="width: {{player.hpPercent + '%'}};"></view>
+    </view>
+    <view class="progress-bar exp-bar">
+      <view class="progress-fill exp-fill" style="width: {{player.expPercent + '%'}};"></view>
+    </view>
+  </view>
+
+  <!-- 塔信息 -->
+  <view class="card tower-card">
+    <view class="card-title">🗼 第 {{tower.floor}} 层 🗼</view>
+    <view class="progress-bar">
+      <view class="progress-fill tower-fill" style="width: {{tower.progressPercent + '%'}};"></view>
+    </view>
+    <view class="progress-label">进度: {{tower.progress}}/{{tower.needKills}}</view>
+    <button class="boss-btn" bindtap="startBossFight" hover-class="btn-hover">🔥 挑战守关Boss 🔥</button>
+    <view wx:if="{{tower.isBossFight}}" class="boss-warning">⚔️ Boss战中 ⚔️</view>
+  </view>
+
+  <!-- 怪物卡片 -->
+  <view class="card monster-card" wx:if="{{monster}}">
+    <view class="card-title">{{monster.name}}</view>
+    <view class="stats-grid">
+      <view class="stat-item">❤️ {{monster.hp}}/{{monster.maxHp}}</view>
+      <view class="stat-item">⚡ {{monster.attack}}</view>
+      <view class="stat-item">🛡️ {{monster.defense}}</view>
+      <view class="stat-item">🎁 {{monster.expReward}}exp</view>
+    </view>
+    <view class="progress-bar">
+      <view class="progress-fill monster-hp-fill" style="width: {{monster.hpPercent + '%'}};"></view>
+    </view>
+  </view>
+
+  <!-- 技能栏（横向滚动，最多4个） -->
+  <view class="card skill-card">
+    <view class="card-title">✨ 主动技能 ✨</view>
+    <scroll-view class="skills-scroll" scroll-x enable-flex>
+      <view class="skills-container">
+        <view wx:for="{{equippedSkills}}" wx:key="id" class="skill-btn" data-skill="{{item}}" bindtap="castSkill">
+          <view class="skill-name">{{item.name}}</view>
+          <view class="skill-cost">{{item.cost}}💧</view>
+        </view>
+        <view class="skill-btn config-btn" bindtap="openSkillConfig">
+          <view class="skill-name">⚙️ 配置</view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 操作按钮区 -->
+  <view class="action-bar">
+    <button class="action-btn attack-btn" bindtap="manualAttack" hover-class="btn-hover">⚡ 攻击</button>
+    <button class="action-btn auto-btn {{autoBattle ? 'auto-active' : ''}}" bindtap="toggleAutoBattle" hover-class="btn-hover">
+      {{autoBattle ? '⏸️ 停' : '▶️ 自动'}}
+    </button>
+    <button class="action-btn log-btn" bindtap="showLogModal">📜 日志</button>
+    <button class="action-btn reset-btn" bindtap="resetGame" hover-class="btn-hover">🔄 重置</button>
+  </view>
+
+  <!-- 战斗日志模态框 -->
+  <view class="modal-mask" wx:if="{{showLogModal}}" bindtap="hideLogModal">
+    <view class="modal-container" catchtap="stopPropagation">
+      <view class="modal-title">战斗日志</view>
+      <scroll-view class="log-scroll" scroll-y scroll-top="{{logScrollTop}}" scroll-with-animation
+        bindscroll="onLogScroll" bindscrolltoupper="onLogScrollToUpper">
+        <view wx:for="{{logs}}" wx:key="index" class="log-item {{item.type}}">
+          {{item.text}}
+        </view>
+      </scroll-view>
+      <button class="modal-close" bindtap="hideLogModal">关闭</button>
+    </view>
+  </view>
+
+  <!-- 技能配置模态框 -->
+  <view class="modal-mask" wx:if="{{showSkillModal}}" bindtap="closeSkillModal">
+    <view class="modal-container skill-config" catchtap="stopPropagation">
+      <view class="modal-title">技能配置（最多4个）</view>
+      <view class="skill-library">
+        <view wx:for="{{ownedSkills}}" wx:key="id" class="config-skill-item {{item.equipped ? 'equipped' : ''}}" bindtap="toggleSkillEquip" data-skill="{{item}}">
+          <view class="config-skill-name">{{item.name}}</view>
+          <view class="config-skill-cost">{{item.cost}}💧</view>
+          <view class="config-skill-desc">{{item.desc}}</view>
+          <view wx:if="{{item.equipped}}" class="equipped-mark">✓</view>
+        </view>
+      </view>
+      <button class="modal-close" bindtap="closeSkillModal">完成</button>
+    </view>
+  </view>
+</view>

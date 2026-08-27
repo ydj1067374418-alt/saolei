@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>多人扫雷</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Remote Co-op Minesweeper</p>
+          <h1>多人扫雷试玩版</h1>
+          <p class="hero-copy">
+            先取一个名字，再创建房间或加入正在进行中的房间。所有玩家看到的是同一张棋盘。
+          </p>
+        </div>
+        <div class="hero-side">
+          <div class="identity-card">
+            <span class="mini-label">当前昵称</span>
+            <strong id="currentPlayerName">未设置</strong>
+            <button id="renameButton" class="ghost-button">改名字</button>
+          </div>
+          <div class="status-chip" id="connectionBadge">正在连接</div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel lobby-panel" id="lobbyPanel">
+          <div class="panel-head">
+            <div>
+              <p class="mini-label">第 1 步</p>
+              <h2>创建新房间</h2>
+            </div>
+            <span class="tag">房间名自动使用你的昵称</span>
+          </div>
+
+          <div class="card">
+            <div class="field-group">
+              <label>房间名</label>
+              <div class="read-only-input" id="roomNamePreview">请先输入昵称</div>
+            </div>
+
+            <div class="field-group">
+              <label>预设难度</label>
+              <div class="preset-row">
+                <button class="preset-button active" data-preset="beginner">初级</button>
+                <button class="preset-button" data-preset="intermediate">中级</button>
+                <button class="preset-button" data-preset="expert">高级</button>
+                <button class="preset-button" data-preset="custom">自定义</button>
+              </div>
+            </div>
+
+            <div class="slider-grid">
+              <label>
+                宽度
+                <input id="widthInput" type="range" min="6" max="30" value="9" />
+                <span id="widthValue">9</span>
+              </label>
+              <label>
+                高度
+                <input id="heightInput" type="range" min="6" max="24" value="9" />
+                <span id="heightValue">9</span>
+              </label>
+              <label>
+                地雷数
+                <input id="mineInput" type="range" min="5" max="80" value="10" />
+                <span id="mineValue">10</span>
+              </label>
+            </div>
+
+            <div class="summary-grid">
+              <div>
+                <span class="mini-label">棋盘</span>
+                <strong id="boardSummary">9 x 9</strong>
+              </div>
+              <div>
+                <span class="mini-label">地雷</span>
+                <strong id="mineSummary">10</strong>
+              </div>
+              <div>
+                <span class="mini-label">安全格</span>
+                <strong id="safeSummary">71</strong>
+              </div>
+            </div>
+
+            <button id="createRoomButton" class="primary-button">开始游戏并创建房间</button>
+          </div>
+
+          <div class="panel-head list-head">
+            <div>
+              <p class="mini-label">第 2 步</p>
+              <h2>加入多人房间</h2>
+            </div>
+            <button id="refreshRoomsButton" class="ghost-button">刷新房间</button>
+          </div>
+
+          <div class="card room-list-card">
+            <div id="roomList" class="room-list"></div>
+          </div>
+        </section>
+
+        <section class="panel room-panel" id="roomPanel">
+          <div class="panel-head">
+            <div>
+              <p class="mini-label">房间</p>
+              <h2 id="activeRoomTitle">还没有加入房间</h2>
+            </div>
+            <div class="room-actions">
+              <button id="leaveRoomButton" class="ghost-button">退出房间</button>
+            </div>
+          </div>
+
+          <div class="room-status-grid">
+            <div class="card compact-card">
+              <span class="mini-label">当前状态</span>
+              <strong id="roomStatusText">未开始</strong>
+              <p id="lastActionText" class="muted-text">暂无操作记录</p>
+            </div>
+            <div class="card compact-card">
+              <span class="mini-label">配置</span>
+              <strong id="roomConfigText">-</strong>
+              <p id="roomMineText" class="muted-text">-</p>
+            </div>
+            <div class="card compact-card">
+              <span class="mini-label">统计</span>
+              <strong id="boardStatsText">已翻开 0 格</strong>
+              <p id="boardFlagText" class="muted-text">已插旗 0 / 0</p>
+            </div>
+          </div>
+
+          <div class="card players-card">
+            <div class="players-head">
+              <div>
+                <p class="mini-label">在线协作玩家</p>
+                <h3 id="playerCountText">0 人</h3>
+              </div>
+              <div class="mode-switch">
+                <button id="revealModeButton" class="mode-button active">翻开模式</button>
+                <button id="flagModeButton" class="mode-button">插旗模式</button>
+                <button id="questionModeButton" class="mode-button">问号模式</button>
+              </div>
+            </div>
+            <div id="playerList" class="player-list"></div>
+          </div>
+
+          <div class="card board-card">
+            <div class="board-scroll">
+              <div id="board" class="board"></div>
+            </div>
+          </div>
+
+          <div id="resultBanner" class="result-banner hidden"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="nameModal" class="modal-backdrop">
+      <div class="modal">
+        <p class="mini-label">欢迎</p>
+        <h2>先给自己取个名字</h2>
+        <p class="modal-copy">
+          这个名字会保存在浏览器本地，下次打开会自动带上。创建房间时，房间名也会直接用这个名字。
+        </p>
+        <label class="modal-label" for="nameInput">你的名字</label>
+        <input
+          id="nameInput"
+          class="modal-input"
+          type="text"
+          maxlength="16"
+          placeholder="例如：小明"
+        />
+        <button id="saveNameButton" class="primary-button">保存并继续</button>
+      </div>
+    </div>
+
+    <template id="roomItemTemplate">
+      <button class="room-item">
+        <div class="room-item-main">
+          <strong class="room-item-title"></strong>
+          <p class="room-item-meta"></p>
+        </div>
+        <span class="join-text">加入</span>
+      </button>
+    </template>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+.vercel/
+node_modules/
+project.private.config.json
+Thumbs.db
+.DS_Store
