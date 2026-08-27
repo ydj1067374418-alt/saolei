@@ -362,6 +362,7 @@ input[type="range"] {
   font-weight: 700;
   font-size: 16px;
   user-select: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
 }
 
 .cell.revealed {
@@ -379,6 +380,12 @@ input[type="range"] {
 
 .cell.questioned {
   color: #8f8680;
+}
+
+.cell.pending {
+  transform: scale(0.96);
+  box-shadow: inset 0 0 0 2px rgba(126, 163, 156, 0.46);
+  opacity: 0.72;
 }
 
 .cell.zero {

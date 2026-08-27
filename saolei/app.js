@@ -50,6 +50,7 @@ const state = {
   heartbeatTimer: null,
   cleanupTimer: null,
   isSavingMove: false,
+  pendingAction: null,
 };
 
 const refs = {
@@ -633,6 +634,7 @@ function renderBoard(room) {
     .map((cell, index) => {
       const classes = ["cell"];
       let content = "";
+      const isPending = state.pendingAction && state.pendingAction.index === index;
 
       if (cell.revealed) {
         classes.push("revealed");
@@ -652,6 +654,10 @@ function renderBoard(room) {
       } else if (cell.questioned) {
         classes.push("questioned");
         content = "?";
+      }
+
+      if (isPending) {
+        classes.push("pending");
       }
 
       return `<button class="${classes.join(" ")}" data-index="${index}" aria-label="cell">${content}</button>`;
@@ -894,116 +900,56 @@ async function handleBoardAction(index, mode) {
     return;
   }
 
-  const board = cloneBoard(room.board_state || []);
+  const board = room.board_state || [];
   const cell = board[index];
   if (!cell) {
     return;
   }
 
-  let changed = false;
-  let nextStatus = room.status;
-  let finishedAt = room.finished_at;
-
-  if (mode === "flag") {
-    if (cell.revealed) {
-      return;
-    }
-    cell.flagged = !cell.flagged;
-    if (cell.flagged) {
-      cell.questioned = false;
-    }
-    changed = true;
-  } else if (mode === "question") {
-    if (cell.revealed) {
-      return;
-    }
-    cell.questioned = !cell.questioned;
-    if (cell.questioned) {
-      cell.flagged = false;
-    }
-    changed = true;
-  } else {
-    if (cell.revealed || cell.flagged) {
-      return;
-    }
-
-    if (cell.mine) {
-      cell.revealed = true;
-      cell.revealed_by = state.playerName;
-      revealAllMines(board);
-      changed = true;
-      nextStatus = "lost";
-      finishedAt = new Date().toISOString();
-    } else {
-      cell.questioned = false;
-      changed = revealSafeArea(board, index, room.width, room.height, state.playerName);
-      if (changed && isBoardCompleted(board)) {
-        nextStatus = "won";
-        finishedAt = new Date().toISOString();
-      }
-    }
-  }
-
-  if (!changed) {
+  if (cell.revealed || (mode === "reveal" && cell.flagged)) {
     return;
   }
 
   state.isSavingMove = true;
-  const previousRoom = {
-    ...room,
-    board_state: cloneBoard(room.board_state || []),
-  };
-  const nextRevision = (room.revision || 1) + 1;
-  const optimisticRoom = {
-    ...room,
-    board_state: board,
-    status: nextStatus,
-    finished_at: finishedAt,
-    last_action_by: `${state.playerName} ${getActionLabel(mode)}`,
-    revision: nextRevision,
-    updated_at: new Date().toISOString(),
-  };
-
-  state.room = optimisticRoom;
-  upsertLobbyRoom(toLobbyRoom(optimisticRoom, state.players.length));
-  renderCurrentRoom();
-  setConnectionStatus("本地已更新，正在同步给其他玩家...");
+  state.pendingAction = { index, mode };
+  renderBoard(room);
+  setConnectionStatus("正在提交操作到云端棋盘...");
 
   try {
-    const { data, error } = await supabase
-      .from("minesweeper_rooms")
-      .update({
-        board_state: board,
-        status: nextStatus,
-        finished_at: finishedAt,
-        last_action_by: `${state.playerName} ${getActionLabel(mode)}`,
-        revision: nextRevision,
-      })
-      .eq("id", room.id)
-      .eq("revision", room.revision)
-      .select()
-      .maybeSingle();
+    const { data, error } = await supabase.rpc("apply_minesweeper_action", {
+      p_room_id: room.id,
+      p_player_id: state.playerId,
+      p_player_name: state.playerName,
+      p_action_mode: mode,
+      p_cell_index: index,
+    });
 
-    if (error || !data) {
-      state.room = previousRoom;
-      renderCurrentRoom();
+    if (error) {
+      throw error;
+    }
+
+    if (!data?.room) {
       await refreshCurrentRoom();
-      setConnectionStatus("棋盘已刷新，可能刚好有人比你先一步操作");
+      setConnectionStatus("操作已回滚，正在同步最新棋盘");
       return;
     }
 
-    state.room = data;
-    upsertLobbyRoom(toLobbyRoom(data, state.players.length));
+    state.room = hydrateRoomSnapshot(data.room);
+    upsertLobbyRoom(toLobbyRoom(data.room, state.players.length));
     renderCurrentRoom();
-    setConnectionStatus("棋盘同步成功");
+    if (data.applied) {
+      setConnectionStatus("操作已同步到云端棋盘");
+    } else {
+      setConnectionStatus("你的操作已收到，云端棋盘保持最新状态");
+    }
   } catch (error) {
     console.error(error);
-    state.room = previousRoom;
-    renderCurrentRoom();
-    setConnectionStatus("棋盘同步失败，请稍后重试");
+    setConnectionStatus("云端棋盘同步失败，请稍后重试");
     await refreshCurrentRoom();
   } finally {
+    state.pendingAction = null;
     state.isSavingMove = false;
+    renderCurrentRoom();
   }
 }
 
