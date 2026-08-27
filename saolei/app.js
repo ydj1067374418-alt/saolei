@@ -31,6 +31,9 @@ const COLOR_POOL = [
   "#f472b6",
 ];
 
+const ROOM_LIST_SELECT =
+  "id,room_name,host_player_id,host_name,difficulty,width,height,mine_count,status,updated_at,revision,started_at,finished_at,last_action_by";
+
 const state = {
   playerId: "",
   playerName: "",
@@ -41,6 +44,7 @@ const state = {
   room: null,
   players: [],
   rooms: [],
+  lobbyChannel: null,
   roomChannel: null,
   lobbyTimer: null,
   heartbeatTimer: null,
@@ -103,14 +107,18 @@ async function boot() {
   try {
     await cleanupStalePresence();
     await loadRooms();
+    subscribeLobby();
   } catch (error) {
     console.error(error);
     setConnectionStatus("联机服务连接异常");
   }
 
   state.lobbyTimer = window.setInterval(() => {
+    if (state.roomId) {
+      return;
+    }
     loadRooms().catch(console.error);
-  }, 8000);
+  }, 30000);
 
   state.cleanupTimer = window.setInterval(() => {
     cleanupStalePresence().catch(console.error);
@@ -231,16 +239,6 @@ async function syncPlayerRename(previousName, nextName) {
     return;
   }
 
-  await supabase
-    .from("minesweeper_players")
-    .update({
-      player_name: nextName,
-      player_color: state.playerColor,
-      last_seen_at: new Date().toISOString(),
-    })
-    .eq("room_id", room.id)
-    .eq("player_id", state.playerId);
-
   const roomPatch = {
     last_action_by: `${previousName || "玩家"} 改名为 ${nextName}`,
     revision: (room.revision || 1) + 1,
@@ -251,14 +249,45 @@ async function syncPlayerRename(previousName, nextName) {
     roomPatch.room_name = `${nextName} 的房间`;
   }
 
-  await supabase
-    .from("minesweeper_rooms")
-    .update(roomPatch)
-    .eq("id", room.id)
-    .eq("revision", room.revision);
+  const [playerResult, roomResult] = await Promise.all([
+    supabase
+      .from("minesweeper_players")
+      .update({
+        player_name: nextName,
+        player_color: state.playerColor,
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq("room_id", room.id)
+      .eq("player_id", state.playerId),
+    supabase
+      .from("minesweeper_rooms")
+      .update(roomPatch)
+      .eq("id", room.id)
+      .eq("revision", room.revision)
+      .select("*")
+      .maybeSingle(),
+  ]);
 
-  await refreshCurrentRoom();
-  await loadRooms();
+  if (playerResult.error) {
+    throw playerResult.error;
+  }
+
+  if (roomResult.error) {
+    throw roomResult.error;
+  }
+
+  state.players = state.players.map((player) =>
+    player.player_id === state.playerId
+      ? { ...player, player_name: nextName, player_color: state.playerColor }
+      : player
+  );
+
+  if (roomResult.data) {
+    state.room = roomResult.data;
+    upsertLobbyRoom(toLobbyRoom(roomResult.data));
+  }
+
+  renderCurrentRoom();
 }
 
 function applyPreset(presetKey) {
@@ -353,7 +382,6 @@ async function handleCreateRoom() {
     }
 
     await joinRoom(data.id, data);
-    await loadRooms();
   } catch (error) {
     console.error(error);
     alert("创建房间失败，请稍后再试。");
@@ -386,7 +414,7 @@ async function loadRooms(showToast = false) {
   try {
     const { data: rooms, error } = await supabase
       .from("minesweeper_rooms")
-      .select("*")
+      .select(ROOM_LIST_SELECT)
       .eq("status", "active")
       .order("updated_at", { ascending: false });
 
@@ -467,9 +495,9 @@ async function joinRoom(roomId, roomData = null) {
   try {
     await upsertSelfIntoRoom(roomId);
     state.roomId = roomId;
-    state.room = roomData || null;
-    await refreshCurrentRoom();
     subscribeRoom(roomId);
+    state.room = roomData ? hydrateRoomSnapshot(roomData) : state.room;
+    await refreshCurrentRoom();
     startHeartbeat();
     setConnectionStatus("已加入多人房间");
   } catch (error) {
@@ -534,6 +562,7 @@ async function refreshCurrentRoom() {
 
   state.room = room;
   state.players = players || [];
+  upsertLobbyRoom(toLobbyRoom(room, state.players.length));
   renderCurrentRoom();
 }
 
@@ -658,17 +687,20 @@ function subscribeRoom(roomId) {
       },
       async (payload) => {
         if (payload.eventType === "DELETE") {
+          removeLobbyRoom(roomId);
           state.roomId = null;
           state.room = null;
           state.players = [];
           stopHeartbeat();
           unsubscribeRoom();
           renderCurrentRoom();
-          await loadRooms();
           return;
         }
-        await refreshCurrentRoom();
-        await loadRooms();
+        if (payload.new) {
+          state.room = hydrateRoomSnapshot(payload.new);
+          upsertLobbyRoom(toLobbyRoom(payload.new, state.players.length));
+          renderCurrentRoom();
+        }
       }
     )
     .on(
@@ -679,9 +711,26 @@ function subscribeRoom(roomId) {
         table: "minesweeper_players",
         filter: `room_id=eq.${roomId}`,
       },
-      async () => {
-        await refreshCurrentRoom();
-        await loadRooms();
+      (payload) => {
+        if (payload.eventType === "INSERT") {
+          upsertRoomPlayer(payload.new);
+          renderCurrentRoom();
+          return;
+        }
+
+        if (payload.eventType === "DELETE") {
+          removeRoomPlayer(payload.old.player_id);
+          renderCurrentRoom();
+          return;
+        }
+
+        if (payload.eventType === "UPDATE") {
+          if (isHeartbeatOnlyUpdate(payload.old, payload.new)) {
+            return;
+          }
+          upsertRoomPlayer(payload.new);
+          renderCurrentRoom();
+        }
       }
     )
     .subscribe((status) => {
@@ -696,6 +745,56 @@ function unsubscribeRoom() {
     supabase.removeChannel(state.roomChannel);
     state.roomChannel = null;
   }
+}
+
+function subscribeLobby() {
+  if (state.lobbyChannel) {
+    return;
+  }
+
+  state.lobbyChannel = supabase
+    .channel("lobby-sync")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "minesweeper_rooms",
+      },
+      (payload) => {
+        if (payload.eventType === "DELETE") {
+          removeLobbyRoom(payload.old.id);
+          return;
+        }
+
+        const room = toLobbyRoom(payload.new);
+        if (room.status !== "active") {
+          removeLobbyRoom(room.id);
+          return;
+        }
+
+        upsertLobbyRoom(room);
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "minesweeper_players",
+      },
+      (payload) => {
+        if (payload.eventType === "INSERT") {
+          adjustLobbyRoomPlayerCount(payload.new.room_id, 1);
+          return;
+        }
+
+        if (payload.eventType === "DELETE") {
+          adjustLobbyRoomPlayerCount(payload.old.room_id, -1);
+        }
+      }
+    )
+    .subscribe();
 }
 
 function startHeartbeat() {
@@ -735,7 +834,6 @@ async function leaveCurrentRoom() {
     stopHeartbeat();
     unsubscribeRoom();
     renderCurrentRoom();
-    await loadRooms();
     setConnectionStatus("已退出房间");
   }
 }
@@ -851,10 +949,27 @@ async function handleBoardAction(index, mode) {
   }
 
   state.isSavingMove = true;
-  setConnectionStatus("正在同步棋盘...");
+  const previousRoom = {
+    ...room,
+    board_state: cloneBoard(room.board_state || []),
+  };
+  const nextRevision = (room.revision || 1) + 1;
+  const optimisticRoom = {
+    ...room,
+    board_state: board,
+    status: nextStatus,
+    finished_at: finishedAt,
+    last_action_by: `${state.playerName} ${getActionLabel(mode)}`,
+    revision: nextRevision,
+    updated_at: new Date().toISOString(),
+  };
+
+  state.room = optimisticRoom;
+  upsertLobbyRoom(toLobbyRoom(optimisticRoom, state.players.length));
+  renderCurrentRoom();
+  setConnectionStatus("本地已更新，正在同步给其他玩家...");
 
   try {
-    const nextRevision = (room.revision || 1) + 1;
     const { data, error } = await supabase
       .from("minesweeper_rooms")
       .update({
@@ -870,16 +985,21 @@ async function handleBoardAction(index, mode) {
       .maybeSingle();
 
     if (error || !data) {
+      state.room = previousRoom;
+      renderCurrentRoom();
       await refreshCurrentRoom();
       setConnectionStatus("棋盘已刷新，可能刚好有人比你先一步操作");
       return;
     }
 
     state.room = data;
+    upsertLobbyRoom(toLobbyRoom(data, state.players.length));
     renderCurrentRoom();
     setConnectionStatus("棋盘同步成功");
   } catch (error) {
     console.error(error);
+    state.room = previousRoom;
+    renderCurrentRoom();
     setConnectionStatus("棋盘同步失败，请稍后重试");
     await refreshCurrentRoom();
   } finally {
@@ -1057,4 +1177,109 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function upsertRoomPlayer(player) {
+  const nextPlayer = { ...player };
+  const currentIndex = state.players.findIndex((item) => item.player_id === nextPlayer.player_id);
+  if (currentIndex === -1) {
+    state.players = [...state.players, nextPlayer].sort(sortPlayersByJoinTime);
+    return;
+  }
+
+  const nextPlayers = [...state.players];
+  nextPlayers[currentIndex] = { ...nextPlayers[currentIndex], ...nextPlayer };
+  state.players = nextPlayers.sort(sortPlayersByJoinTime);
+}
+
+function removeRoomPlayer(playerId) {
+  state.players = state.players.filter((player) => player.player_id !== playerId);
+}
+
+function isHeartbeatOnlyUpdate(previousPlayer, nextPlayer) {
+  return (
+    previousPlayer?.player_name === nextPlayer?.player_name &&
+    previousPlayer?.player_color === nextPlayer?.player_color &&
+    previousPlayer?.joined_at === nextPlayer?.joined_at
+  );
+}
+
+function sortPlayersByJoinTime(left, right) {
+  return new Date(left.joined_at).getTime() - new Date(right.joined_at).getTime();
+}
+
+function upsertLobbyRoom(room) {
+  if (!room || room.status !== "active") {
+    return;
+  }
+
+  const currentIndex = state.rooms.findIndex((item) => item.id === room.id);
+  if (currentIndex === -1) {
+    state.rooms = [room, ...state.rooms].sort(sortRoomsByUpdateTime);
+  } else {
+    const nextRooms = [...state.rooms];
+    nextRooms[currentIndex] = { ...nextRooms[currentIndex], ...room };
+    state.rooms = nextRooms.sort(sortRoomsByUpdateTime);
+  }
+
+  renderRoomList();
+}
+
+function removeLobbyRoom(roomId) {
+  const nextRooms = state.rooms.filter((room) => room.id !== roomId);
+  if (nextRooms.length === state.rooms.length) {
+    return;
+  }
+  state.rooms = nextRooms;
+  renderRoomList();
+}
+
+function adjustLobbyRoomPlayerCount(roomId, delta) {
+  const currentIndex = state.rooms.findIndex((room) => room.id === roomId);
+  if (currentIndex === -1) {
+    return;
+  }
+
+  const nextRooms = [...state.rooms];
+  const currentRoom = nextRooms[currentIndex];
+  const nextCount = Math.max(0, (currentRoom.playerCount || 0) + delta);
+  nextRooms[currentIndex] = { ...currentRoom, playerCount: nextCount };
+  state.rooms = nextRooms.sort(sortRoomsByUpdateTime);
+  renderRoomList();
+}
+
+function sortRoomsByUpdateTime(left, right) {
+  return new Date(right.updated_at || 0).getTime() - new Date(left.updated_at || 0).getTime();
+}
+
+function toLobbyRoom(room, playerCount = null) {
+  if (!room) {
+    return null;
+  }
+
+  const existingRoom = state.rooms.find((item) => item.id === room.id);
+  return {
+    id: room.id,
+    room_name: room.room_name,
+    host_player_id: room.host_player_id,
+    host_name: room.host_name,
+    difficulty: room.difficulty,
+    width: room.width,
+    height: room.height,
+    mine_count: room.mine_count,
+    status: room.status,
+    updated_at: room.updated_at,
+    revision: room.revision,
+    started_at: room.started_at,
+    finished_at: room.finished_at,
+    last_action_by: room.last_action_by,
+    playerCount: playerCount ?? existingRoom?.playerCount ?? 0,
+  };
+}
+
+function hydrateRoomSnapshot(room) {
+  return {
+    ...room,
+    board_state: room.board_state || [],
+  };
 }
