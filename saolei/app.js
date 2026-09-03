@@ -174,6 +174,11 @@ function bindEvents() {
 
   refs.board.addEventListener("contextmenu", (event) => {
     event.preventDefault();
+    const cell = event.target.closest("[data-index]");
+    if (!cell) {
+      return;
+    }
+    handleBoardContextMenu(Number(cell.dataset.index));
   });
 
   window.addEventListener("beforeunload", () => {
@@ -951,6 +956,31 @@ async function handleBoardAction(index, mode) {
     state.isSavingMove = false;
     renderCurrentRoom();
   }
+}
+
+function handleBoardContextMenu(index) {
+  const room = state.room;
+  if (!room || room.status !== "active" || state.isSavingMove) {
+    return;
+  }
+
+  const board = room.board_state || [];
+  const cell = board[index];
+  if (!cell || cell.revealed) {
+    return;
+  }
+
+  if (cell.flagged) {
+    handleBoardAction(index, "question");
+    return;
+  }
+
+  if (cell.questioned) {
+    handleBoardAction(index, "question");
+    return;
+  }
+
+  handleBoardAction(index, "flag");
 }
 
 function createBoard(width, height, mineCount) {
