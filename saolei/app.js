@@ -51,6 +51,7 @@ const LANDLORD_ROOM_LIST_SELECT =
 
 const LANDLORD_STATUS_TEXT = {
   waiting: "等待凑齐并准备",
+  dealing: "正在发牌",
   call: "叫地主中",
   rob: "抢地主中",
   play: "出牌中",
@@ -100,6 +101,7 @@ const state = {
     poseSyncInFlight: false,
     pendingPose: null,
     lastPoseSignature: "",
+    startingRound: false,
     handDrag: {
       active: false,
       startIndex: -1,
@@ -1430,6 +1432,7 @@ async function upsertSelfIntoLandlordRoom(roomId, currentPlayers = []) {
       is_ready: existing?.is_ready ?? false,
       round_score_delta: existing?.round_score_delta ?? 0,
       total_score_snapshot: state.landlordScore,
+      anti_peek_enabled: existing?.anti_peek_enabled ?? false,
       hand_cards: existing?.hand_cards ?? [],
       role: existing?.role ?? "farmer",
       pos_x: existing?.pos_x ?? spawn.x,
@@ -1574,6 +1577,7 @@ async function syncLandlordScene() {
   if (!state.landlord.hudExperience) {
     const hud = new LandlordHudCanvas(refs.landlordHudCanvas, {
       onLeaveRoom: () => leaveLandlordRoom(),
+      onAntiPeekToggle: () => handleLandlordAntiPeekToggle(),
       onReadyToggle: () => handleLandlordReadyToggle(),
       onBidAction: (action) => handleLandlordBidAction(action),
       onPlay: () => handleLandlordPlayCards(),
@@ -2063,6 +2067,7 @@ function hydrateLandlordRoom(room) {
 function normalizeLandlordPlayers(players) {
   return [...(players || [])].sort(sortLandlordPlayers).map((player, index) => ({
     ...player,
+    anti_peek_enabled: Boolean(player.anti_peek_enabled),
     hand_cards: sortCards(player.hand_cards || []),
     seat_index: player.seat_index > 0 ? player.seat_index : index + 1,
     ...getNormalizedLandlordPose(player, player.seat_index > 0 ? player.seat_index : index + 1),
@@ -2354,6 +2359,9 @@ function getLandlordHandTitle(room) {
   }
   if (room.phase === "waiting") {
     return selfPlayer.is_ready ? "你已准备，等待其他玩家" : "点击准备，等 3 人齐了自动开始";
+  }
+  if (room.phase === "dealing") {
+    return "正在洗牌发牌，马上开始";
   }
   if (room.phase === "call") {
     return room.current_bidding_player_id === state.playerId ? "轮到你决定叫不叫地主" : "等待别人叫地主";
@@ -2651,7 +2659,7 @@ async function removeSelfFromLandlordRoom() {
 
 
 function shouldPreserveLandlordSeat(room) {
-  return Boolean(room && ["call", "rob", "play", "finished"].includes(room.phase));
+  return Boolean(room && ["dealing", "call", "rob", "play", "finished"].includes(room.phase));
 }
 
 async function handleLandlordReadyToggle() {
@@ -2700,11 +2708,46 @@ async function handleLandlordReadyToggle() {
   await maybeAutoStartLandlordRound();
 }
 
+async function handleLandlordAntiPeekToggle() {
+  const room = state.landlord.room;
+  const selfPlayer = getSelfLandlordPlayer();
+  if (!room || !selfPlayer) {
+    return;
+  }
+
+  const nextValue = !selfPlayer.anti_peek_enabled;
+  const { error } = await supabase
+    .from("landlord_players")
+    .update({
+      anti_peek_enabled: nextValue,
+      last_seen_at: new Date().toISOString(),
+    })
+    .eq("room_id", room.id)
+    .eq("player_id", state.playerId);
+
+  if (error) {
+    console.error(error);
+    alert("切换防偷窥模式失败。");
+    return;
+  }
+
+  state.landlord.players = normalizeLandlordPlayers(
+    state.landlord.players.map((player) =>
+      player.player_id === state.playerId
+        ? { ...player, anti_peek_enabled: nextValue }
+        : player
+    )
+  );
+  renderLandlordRoom();
+  setConnectionStatus(nextValue ? "已开启防偷窥模式" : "已关闭防偷窥模式");
+}
+
 async function maybeAutoStartLandlordRound() {
   const room = state.landlord.room;
   const players = getLandlordOrderedPlayers();
   if (
     !room ||
+    state.landlord.startingRound ||
     room.host_player_id !== state.playerId ||
     room.phase !== "waiting" && room.phase !== "finished" ||
     players.length !== 3 ||
@@ -2713,10 +2756,24 @@ async function maybeAutoStartLandlordRound() {
     return;
   }
 
-  await startLandlordRound(room, players);
+  state.landlord.startingRound = true;
+  try {
+    await startLandlordRound(room, players);
+  } finally {
+    state.landlord.startingRound = false;
+  }
 }
 
 async function startLandlordRound(room, players) {
+  const claimedRoom = await updateLandlordRoomWithGuard(room, {
+    status: "active",
+    phase: "dealing",
+    last_action_by: "正在发牌...",
+  });
+  if (!claimedRoom) {
+    return;
+  }
+
   const orderedPlayers = normalizeLandlordPlayers(players).map((player, index) => ({
     ...player,
     seat_index: index + 1,
@@ -2744,10 +2801,10 @@ async function startLandlordRound(room, players) {
   );
 
   await Promise.all(playerUpdates);
-  const nextRoom = await updateLandlordRoomWithGuard(room, {
+  const nextRoom = await updateLandlordRoomWithGuard(claimedRoom, {
     status: "active",
     phase: "call",
-    round_no: (room.round_no || 0) + 1,
+    round_no: (claimedRoom.round_no || 0) + 1,
     multiplier: 1,
     current_call_score: 0,
     call_index: 0,

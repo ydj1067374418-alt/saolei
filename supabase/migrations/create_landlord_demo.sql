@@ -43,6 +43,7 @@ create table if not exists public.landlord_players (
   role text not null default 'farmer' check (role in ('farmer', 'landlord')),
   round_score_delta integer not null default 0,
   total_score_snapshot integer not null default 0,
+  anti_peek_enabled boolean not null default false,
   joined_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
   unique (room_id, player_id)

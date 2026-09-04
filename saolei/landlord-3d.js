@@ -421,6 +421,7 @@ export class Landlord3DExperience {
     }
 
     const cards = (player.hand_cards || []).slice(0, MAX_WORLD_CARDS);
+    const antiPeekEnabled = Boolean(player.anti_peek_enabled);
     if (cards.length === 0) {
       return;
     }
@@ -446,7 +447,11 @@ export class Landlord3DExperience {
         this.scene,
         true
       );
-      drawCardTexture(faceTexture, card, false);
+      if (antiPeekEnabled) {
+        drawCardBackTexture(faceTexture);
+      } else {
+        drawCardTexture(faceTexture, card, false);
+      }
       const faceMaterial = new StandardMaterial(`card-face-mat-${player.player_id}-${index}`, this.scene);
       faceMaterial.diffuseTexture = faceTexture;
       faceMaterial.emissiveColor = new Color3(1, 1, 1);
@@ -640,6 +645,10 @@ function getPlayerStatusText(player, room) {
 
   const roleText = room.landlord_player_id === player.player_id ? "地主" : "农民";
 
+  if (room.phase === "dealing") {
+    return `发牌中 · ${roleText}`;
+  }
+
   if (room.phase === "waiting" || room.phase === "finished") {
     return `${player.is_ready ? "已准备" : "未准备"} · ${roleText}`;
   }
@@ -665,6 +674,10 @@ function getStatusTone(player, room) {
   }
 
   if ((room.phase === "call" || room.phase === "rob") && room.current_bidding_player_id === player.player_id) {
+    return "turn";
+  }
+
+  if (room.phase === "dealing") {
     return "turn";
   }
 

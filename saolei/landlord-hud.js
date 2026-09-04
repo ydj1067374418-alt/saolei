@@ -19,6 +19,7 @@ export class LandlordHudCanvas {
     this.disposed = false;
     this.hitRegions = {
       leave: null,
+      antiPeek: null,
       actions: [],
       cards: [],
     };
@@ -60,6 +61,11 @@ export class LandlordHudCanvas {
 
       if (hit.type === "leave") {
         this.options.onLeaveRoom?.();
+        return;
+      }
+
+      if (hit.type === "antiPeek") {
+        this.invokeAction("antiPeek");
         return;
       }
 
@@ -171,7 +177,7 @@ export class LandlordHudCanvas {
     }
 
     this.ctx.clearRect(0, 0, this.width, this.height);
-    this.hitRegions = { leave: null, actions: [], cards: [] };
+    this.hitRegions = { leave: null, antiPeek: null, actions: [], cards: [] };
 
     if (!this.snapshot?.room) {
       return;
@@ -179,6 +185,7 @@ export class LandlordHudCanvas {
 
     this.drawHeader();
     this.drawStatusPanel();
+    this.drawAntiPeekToggle();
     this.drawBottomCards();
     this.drawTableCards();
     this.drawActionButtons();
@@ -232,6 +239,7 @@ export class LandlordHudCanvas {
     const turnPlayer = this.snapshot.players.find((player) => player.player_id === room.turn_player_id);
     const phaseMap = {
       waiting: "等待凑齐并准备",
+      dealing: "正在发牌",
       call: "叫地主中",
       rob: "抢地主中",
       play: "出牌中",
@@ -256,6 +264,36 @@ export class LandlordHudCanvas {
 
     const prompt = buildPrompt(room, selfPlayer, this.snapshot.selfId);
     wrapText(this.ctx, prompt, x + 18, y + 140, width - 36, 18);
+  }
+
+  drawAntiPeekToggle() {
+    const selfPlayer = this.getSelfPlayer();
+    if (!selfPlayer) {
+      return;
+    }
+
+    const rect = {
+      x: this.width - 174,
+      y: this.height / 2 - 34,
+      width: 154,
+      height: 68,
+    };
+    const enabled = Boolean(selfPlayer.anti_peek_enabled);
+    drawActionButton(this.ctx, rect, "防偷窥模式", {
+      palette: enabled ? "primary" : "muted",
+      hover: this.pointer.hover?.type === "antiPeek",
+      fontSize: 18,
+    });
+
+    this.ctx.save();
+    this.ctx.fillStyle = enabled ? "#2f6f73" : "#7d756f";
+    this.ctx.font = "bold 13px Segoe UI";
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.fillText(enabled ? "已开启" : "已关闭", rect.x + rect.width / 2, rect.y + rect.height - 18);
+    this.ctx.restore();
+
+    this.hitRegions.antiPeek = rect;
   }
 
   drawSeatPanel() {
@@ -502,6 +540,7 @@ export class LandlordHudCanvas {
       play: () => this.options.onPlay?.(),
       pass: () => this.options.onPass?.(),
       clear: () => this.options.onSelectionChange?.([]),
+      antiPeek: () => this.options.onAntiPeekToggle?.(),
     };
     actions[name]?.();
   }
@@ -513,6 +552,10 @@ export class LandlordHudCanvas {
   findHit(x, y) {
     if (this.hitRegions.leave && pointInRect(x, y, this.hitRegions.leave)) {
       return { type: "leave" };
+    }
+
+    if (this.hitRegions.antiPeek && pointInRect(x, y, this.hitRegions.antiPeek)) {
+      return { type: "antiPeek" };
     }
 
     for (const action of this.hitRegions.actions) {
@@ -595,6 +638,9 @@ function buildPrompt(room, selfPlayer, selfId) {
   }
   if (room.phase === "waiting") {
     return selfPlayer.is_ready ? "你已经准备，等 3 个人都准备后自动开局。" : "点击准备，等 3 个人凑齐后自动发牌。";
+  }
+  if (room.phase === "dealing") {
+    return "正在洗牌发牌，马上开始。";
   }
   if (room.phase === "call") {
     return room.current_bidding_player_id === selfId ? "现在轮到你决定叫不叫地主。" : "正在等别人决定叫不叫地主。";
