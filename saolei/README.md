@@ -1,14 +1,25 @@
-# 多人扫雷网页版
+# 多人小游戏网页版
 
-这个目录下是一个**可远程多人联机的扫雷网页原型**。  
-它已经接好了 Supabase 的多人房间和棋盘同步逻辑，支持下面这些流程：
+这个目录下现在是一个**可远程多人联机的小游戏网页原型**。
+当前包含两种模式：
+
+- 多人扫雷
+- 斗地主
+
+它已经接好了 Supabase 的多人房间和实时同步逻辑，支持下面这些流程：
 
 - 第一次打开先输入昵称
 - 昵称保存在浏览器 `localStorage`
-- 创建房间时，房间名自动显示为“你的昵称 的房间”
+- 进入后先选模式：扫雷或斗地主
+- 创建房间时，房间名自动显示为“你的昵称 的房间”或“你的昵称 的斗地主房间”
 - 其他人打开网页后，可以在“加入多人房间”列表里看到正在进行中的房间
 - 所有人共享同一张扫雷盘
 - 支持翻开、插旗、问号三种模式切换
+- 斗地主房间最多 3 人，所有人准备后自动发牌
+- 支持叫地主、抢地主、出牌、不出，以及本地积分累计
+- 斗地主房间内新增 Babylon.js 3D 场景
+- 支持 `W/A/S/D` 移动和长按右键拖动视角
+- 房间内玩家位置和朝向会实时同步，其他玩家能看到你走动
 - 顶部显示当前在线玩家
 - 房间里最后一个人退出后，房间会自动删除
 - 如果有人长时间断开，系统会自动清理离线玩家和空房间
@@ -19,15 +30,20 @@
 
 ```text
 saolei/
-  ├─ index.html        页面结构
-  ├─ style.css         页面样式
-  ├─ app.js            房间、联机、扫雷逻辑
-  ├─ config.js         Supabase 地址和前端 anon key
-  └─ README.md         这份说明
+  ├─ index.html              页面结构
+  ├─ style.css               页面样式
+  ├─ app.js                  模式大厅、扫雷、斗地主联机逻辑
+  ├─ landlord-logic.js       斗地主洗牌、牌型判断和出牌比较
+  ├─ landlord-3d.js          斗地主 Babylon 3D 房间和移动视角
+  ├─ config.js               Supabase 地址和前端 anon key
+  └─ README.md               这份说明
 
 supabase/
   └─ migrations/
-     └─ create_minesweeper_demo.sql   数据表和实时同步配置
+     ├─ create_minesweeper_demo.sql      扫雷数据表和实时同步配置
+     ├─ add_minesweeper_action_rpc.sql   扫雷云端权威棋盘 RPC
+     ├─ create_landlord_demo.sql         斗地主房间与玩家表
+     └─ add_landlord_pose_columns.sql    斗地主玩家位置和朝向字段
 ```
 
 ---

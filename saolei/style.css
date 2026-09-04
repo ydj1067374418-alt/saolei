@@ -122,6 +122,48 @@ h1 {
   font-size: 14px;
 }
 
+.score-text,
+.mode-chip {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.mode-panel {
+  margin-bottom: 20px;
+}
+
+.mode-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.mode-choice-card {
+  text-align: left;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(133, 122, 115, 0.12);
+  background: rgba(255, 251, 247, 0.82);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+
+.mode-choice-card strong {
+  display: block;
+  font-size: 24px;
+  margin: 8px 0;
+}
+
+.mode-choice-card p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.mode-choice-card.active {
+  border-color: rgba(126, 163, 156, 0.48);
+  background: rgba(143, 182, 174, 0.16);
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(320px, 420px) 1fr;
@@ -318,6 +360,196 @@ input[type="range"] {
   gap: 12px;
 }
 
+.landlord-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.landlord-seat-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.landlord-seat-card,
+.landlord-table-card,
+.landlord-hand-card,
+.landlord-scene-card {
+  background: rgba(247, 241, 236, 0.94);
+  border: 1px solid rgba(133, 122, 115, 0.12);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.landlord-scene-shell {
+  position: relative;
+  width: 100%;
+  min-height: 420px;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(133, 122, 115, 0.12);
+  background: linear-gradient(180deg, #f1ece5 0%, #e9e0d7 100%);
+}
+
+.landlord-scene-canvas {
+  width: 100%;
+  height: 420px;
+  display: block;
+  touch-action: none;
+}
+
+.landlord-hud-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 3;
+}
+
+body.landlord-room-active {
+  overflow: hidden;
+}
+
+body.landlord-room-active .page-shell {
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+}
+
+body.landlord-room-active .hero,
+body.landlord-room-active .mode-panel,
+body.landlord-room-active #minesweeperView,
+body.landlord-room-active #landlordView > .lobby-panel,
+body.landlord-room-active .landlord-hud {
+  display: none !important;
+}
+
+body.landlord-room-active #landlordView {
+  display: block !important;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  margin: 0;
+}
+
+body.landlord-room-active #landlordView .landlord-room-panel {
+  position: fixed;
+  inset: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+body.landlord-room-active .landlord-scene-card {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  border: none;
+  border-radius: 0;
+  margin: 0;
+  padding: 0;
+  background: #ece3da;
+  box-shadow: none;
+}
+
+body.landlord-room-active .landlord-scene-card .panel-head {
+  display: none;
+}
+
+body.landlord-room-active .landlord-hud {
+  position: fixed;
+  z-index: 8;
+  pointer-events: auto;
+  background: rgba(255, 251, 247, 0.78);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+body.landlord-room-active .landlord-scene-shell,
+body.landlord-room-active .landlord-scene-canvas,
+body.landlord-room-active .landlord-hud-canvas {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  border-radius: 0;
+  border: none;
+}
+
+.landlord-seat-head,
+.landlord-table-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.landlord-seat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.mini-pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(240, 232, 226, 0.88);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mini-pill.ready {
+  background: rgba(157, 184, 160, 0.18);
+  color: #67806b;
+}
+
+.mini-pill.landlord {
+  background: rgba(215, 180, 140, 0.22);
+  color: #9a744f;
+}
+
+.landlord-card-row,
+.landlord-hand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.landlord-hand {
+  min-height: 86px;
+}
+
+.landlord-card {
+  min-width: 58px;
+  padding: 14px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(133, 122, 115, 0.14);
+  background: rgba(255, 252, 248, 0.98);
+  color: var(--text);
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(155, 141, 132, 0.12);
+}
+
+.landlord-card.selected {
+  transform: translateY(-8px);
+  border-color: rgba(126, 163, 156, 0.56);
+  background: rgba(143, 182, 174, 0.16);
+}
+
+.landlord-card-inline {
+  min-width: auto;
+  padding: 10px 12px;
+}
+
+.muted-row {
+  min-height: 52px;
+}
+
 .player-pill {
   display: flex;
   align-items: center;
@@ -495,6 +727,11 @@ input[type="range"] {
   }
 
   .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-choice-grid,
+  .landlord-seat-list {
     grid-template-columns: 1fr;
   }
 
