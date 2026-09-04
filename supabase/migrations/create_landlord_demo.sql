@@ -6,7 +6,7 @@ create table if not exists public.landlord_rooms (
   host_player_id text not null,
   host_name text not null,
   status text not null default 'waiting' check (status in ('waiting', 'active', 'finished', 'closed')),
-  phase text not null default 'waiting' check (phase in ('waiting', 'call', 'rob', 'play', 'finished')),
+  phase text not null default 'waiting' check (phase in ('waiting', 'dealing', 'call', 'rob', 'play', 'finished')),
   round_no integer not null default 0,
   multiplier integer not null default 1,
   current_call_score integer not null default 0,
